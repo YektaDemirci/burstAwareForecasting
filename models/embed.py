@@ -112,48 +112,12 @@ class TimeFeatureEmbedding(nn.Module):
     def forward(self, x):
         return self.embed(x)
 
-# class PeakEmbedding(nn.Module):
-#     def __init__(self, d_model):
-#         super(PeakEmbedding, self).__init__()
-#         SN = 57927
-
-#         p_df = pd.read_csv('/home/yektad/Desktop/informer/p2p_peaks.csv', header=None)
-#         peaks = p_df.to_numpy().flatten()
-
-#         d_df = pd.read_csv('/home/yektad/Desktop/informer/p2p_peaks_dist2peak.csv', header=None)
-#         dist = d_df.to_numpy().flatten()
-
-#         # Sinusoidal embedding
-#         pe = torch.zeros(SN, d_model).float()
-#         # It was; pe.require_grad, Appareantly a typo 
-#         pe.requires_grad = False # Not learnable
-#         for i in range(len(peaks)-1):
-
-#             start = peaks[i]
-#             end = peaks[i+1]
-#             segment  = torch.from_numpy(dist[start:end]).float()
-
-#             div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
-#             pe[start:end, 0::2] = torch.sin(segment[:, None] * div_term[None, :])
-#             pe[start:end, 1::2] = torch.cos(segment[:, None] * div_term[None, :])
-        
-#         self.register_buffer('pe', pe)
-
-#     def forward(self, x_size, indexes):
-#         #if training:
-#         # return torch.stack([self.pe[idx:idx+x_size, :] for idx in indexes], dim=0)
-#         #if pred:
-#         return torch.stack([self.pe[(idx+46342):(idx+x_size+46342), :] for idx in indexes], dim=0)
-
 class PeakEmbedding(nn.Module):
     def __init__(self, d_model):
         super(PeakEmbedding, self).__init__()
-        # The number of peak feautres we need, needs to be updated manually for now!
         self.embed = nn.Linear(1, d_model)
-        # self.embed = nn.Linear(4, d_model)
 
     def forward(self, batch_x_peak):
-        # return self.embed(batch_x_peak)
         return self.embed(batch_x_peak.unsqueeze(-1))
 
 class DataEmbedding(nn.Module):
@@ -168,15 +132,8 @@ class DataEmbedding(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, x_mark, batch_x_peak=None, idx=None):
-        # if (batch_x_peak is not None) and (batch_x_peak==1).any().item():
-        #     print("HERE!")
-        # The following is the original one
-        # x = self.value_embedding(x) + self.position_embedding(x)
+        # # Standard way
         # x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark)
         x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark) + self.peak_embedding(batch_x_peak)
-        # x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark) + self.peak_embedding(x.size(1), idx)
-
-        # x = self.value_embedding(x) + self.position_embedding(x)
-        # All the same size 32x96x512 + 32x96x512 + 32x96x512 
         
         return self.dropout(x)
