@@ -24,6 +24,7 @@ get_bursts.py is used to find the burst locations
 
 ![Forecasting accuracies](img/result1.png)
 ![Burst forecasts within a prediction horizon](img/result2.png)
+![Ablation results](img/result3.png)
 
 ## Acknowledgement
 Most of the codebase is derived from the following main repo:
