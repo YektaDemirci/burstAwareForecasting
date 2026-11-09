@@ -4,6 +4,7 @@ from models.model import Informer, InformerStack
 
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
+from utils.peakfeatures import causal_burst_events
 
 import numpy as np
 
@@ -55,7 +56,8 @@ class Exp_Informer(Exp_Basic):
                 self.args.output_attention,
                 self.args.distil,
                 self.args.mix,
-                self.device
+                self.device,
+                self.args.model_mode == 'proposed'
             ).float()
         
         if self.args.use_multi_gpu and self.args.use_gpu:
@@ -101,7 +103,8 @@ class Exp_Informer(Exp_Basic):
             cols=args.cols,
             org_mean=float(args.org_data_mean),
             org_std=float(args.org_data_std),
-            peak_path=args.peak_path
+            peak_path=args.peak_path,
+            peak_feature=args.peak_feature
         )
 
         data_loader = DataLoader(
@@ -121,6 +124,7 @@ class Exp_Informer(Exp_Basic):
         criterion =  nn.MSELoss()
         return criterion
 
+    @torch.no_grad()
     def vali(self, vali_data, vali_loader, criterion):
         self.model.eval()
         total_loss = []
@@ -135,6 +139,9 @@ class Exp_Informer(Exp_Basic):
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag = 'train')
+        if self.args.peak_target == 'causal':
+            # data_x here is the training region only, so nothing from later data reaches the targets.
+            train_data.peaks = causal_burst_events(train_data.data_x[:, -1], len(train_data.data_x)).astype(float)
         vali_data, vali_loader = self._get_data(flag = 'val')
         test_data, test_loader = self._get_data(flag = 'test')
 
@@ -173,16 +180,19 @@ class Exp_Informer(Exp_Basic):
 
                 iter_count += 1
                 
-                model_optim.zero_grad()
+                # NOTE: zero_grad moved after optimizer step to support gradient accumulation
                 pred, true, peak_logits, base, delta = self._process_one_batch(
                     train_data, batch_x, batch_y, batch_x_mark, batch_y_mark, batch_x_peak, batch_y_peak, batch_x_idx, batch_y_idx)
                 
                 y_peak_gt = batch_y_idx[:, -self.args.pred_len:].float().to(self.device)
-                
+
                 pos = y_peak_gt.sum()
                 neg = y_peak_gt.numel() - pos
-                
+
+                # With a rare label the default is about batch_size - 1, so it depends on the batch size.
                 pos_w = (neg / pos.clamp_min(1.)).detach()
+                if self.args.pos_weight is not None:
+                    pos_w = torch.tensor(self.args.pos_weight, device=self.device)
                 cls_loss = F.binary_cross_entropy_with_logits(peak_logits.squeeze(-1), y_peak_gt, pos_weight=pos_w)
                 loss_forecast = asymmetric_mse(pred, true, y_peak_gt, gamma=5.0)
 
@@ -196,9 +206,9 @@ class Exp_Informer(Exp_Basic):
                 gamma = 0.33
                 loss = (alpha*loss_forecast) + (gamma*cls_loss) + (beta * amp_loss)
 
-                # # standard way
-                # loss = criterion(base, true)
-                
+                if self.args.model_mode == 'baseline':
+                    loss = criterion(base, true)
+
                 train_loss.append(loss.item())
                 loss_batch.append(loss.item())
                 
@@ -215,8 +225,13 @@ class Exp_Informer(Exp_Basic):
                     scaler.step(model_optim)
                     scaler.update()
                 else:
-                    loss.backward()
-                    model_optim.step()
+                    # Gradient accumulation: divide loss by accum steps and
+                    # step the optimizer only every accum steps (or at epoch end).
+                    accum = max(1, getattr(self.args, 'grad_accum', 1))
+                    (loss / accum).backward()
+                    if (i + 1) % accum == 0 or (i + 1) == train_steps:
+                        model_optim.step()
+                        model_optim.zero_grad()
                 
             print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss)
@@ -281,7 +296,7 @@ class Exp_Informer(Exp_Basic):
             self.model.load_state_dict(torch.load(best_model_path))
 
             num_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-            print(f"Trainable parameters: {num_params:,}")
+            # print(f"Trainable parameters: {num_params:,}")
 
         self.model.eval()
         

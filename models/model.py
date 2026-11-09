@@ -13,8 +13,9 @@ class Informer(nn.Module):
                 factor=5, d_model=512, n_heads=8, e_layers=3, d_layers=2, d_ff=512, 
                 dropout=0.0, attn='prob', embed='fixed', freq='h', detail_freq="h", activation='gelu', 
                 output_attention = False, distil=True, mix=True,
-                device=torch.device('cuda:0')):
+                device=torch.device('cuda:0'), use_heads=True):
         super(Informer, self).__init__()
+        self.use_heads = use_heads
         self.pred_len = out_len
         self.attn = attn
         self.output_attention = output_attention
@@ -89,7 +90,8 @@ class Informer(nn.Module):
 
         gate = torch.sigmoid(peak_logits)         
         delta       = F.softplus(self.amp_head(dec_out_pre))
-        dec_out     = base + gate * delta
+        # Untrained heads must not perturb the forecast of the plain baseline.
+        dec_out     = base + gate * delta if self.use_heads else base
 
         if self.output_attention:
             return dec_out[:,-self.pred_len:,:], None

@@ -1,7 +1,9 @@
-# python -u main_informer.py --model informer --data custom --data_path PARETOm_test_vvl_1.csv --freq 10L --features S --seq_len 256 --label_len 128 --pred_len 1 --e_layers 1 --d_layers 1 --do_predict --checkpoints ./checkpoints/june20_256_1/ --itr 1 --batch_size 64
+# python -u main_informer.py --model informer --data custom --data_path f_sns100.csv --freq 100L --features S --seq_len 128 --label_len 64 --pred_len 1 --e_layers 2 --d_layers 1 --attn prob --des 'Exp' --itr 1 --batch_size 32 --train_epochs 8 --parr 1.04
+# turn on peak embeddings from embed.py if needed.
 
 import argparse
 import os
+import numpy as np
 import torch
 
 from exp.exp_informer import Exp_Informer
@@ -13,7 +15,7 @@ from exp.exp_informer import Exp_Informer
 
 parser = argparse.ArgumentParser(description='[Informer] Long Sequences Forecasting')
 
-parser.add_argument('--model', type=str, required=True, default='informer',help='model of experiment, options: [informer, informerstack, informerlight(TBD)]')
+parser.add_argument('--model', type=str, required=True, default='informer', choices=['informer'], help='model of experiment; only informer supports the burst-aware flow')
 # The default was ETTh1
 parser.add_argument('--data', type=str, required=True, default='ETTh1', help='data')
 parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
@@ -58,6 +60,7 @@ parser.add_argument('--num_workers', type=int, default=0, help='data loader num 
 parser.add_argument('--itr', type=int, default=2, help='experiments times')
 parser.add_argument('--train_epochs', type=int, default=6, help='train epochs')
 parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+parser.add_argument('--grad_accum', type=int, default=1, help='gradient accumulation steps; effective batch = batch_size * grad_accum')
 parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
 parser.add_argument('--des', type=str, default='test',help='exp description')
@@ -74,8 +77,25 @@ parser.add_argument('--parr', type=str, default='1.04',help='device ids of multi
 parser.add_argument('--org_data_mean', type=str, default='0.',help='original data_s mean')
 parser.add_argument('--org_data_std', type=str, default='1.',help='original data_s std')
 parser.add_argument('--peak_path', type=str, default='peaks.csv', help='peak file')  
+parser.add_argument('--peak_feature', type=str, default='causal', choices=['leak', 'extrap', 'causal', 'none'],
+                    help='distance-from-burst feature. leak: original, reads the true future distance; '
+                         'extrap: horizon distance extrapolated, history from centered labels; '
+                         'causal: extrapolated, history from past-only events; none: zeros')
+parser.add_argument('--model_mode', type=str, default='proposed', choices=['proposed', 'baseline'],
+                    help='proposed: gated burst heads with the composite loss; baseline: projection head with MSE')
+parser.add_argument('--pos_weight', type=float, default=None,
+                    help='fixed positive-class weight for the gate; unset keeps the per-batch neg/pos ratio')
+parser.add_argument('--peak_target', type=str, default='causal', choices=['list', 'causal'],
+                    help='burst training target. list: the peak file, whose thresholds can use the whole series; '
+                         'causal: events from past samples, thresholds from the training region. Scoring is unchanged')
+parser.add_argument('--seed', type=int, default=None, help='random seed; unset keeps the unseeded behaviour')
 
 args = parser.parse_args()
+
+if args.seed is not None:
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
 args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
