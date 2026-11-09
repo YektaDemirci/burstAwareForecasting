@@ -19,7 +19,9 @@ After these changes, we trained the proposed model and vanilla Informer on the d
 
 These runs used a 4 GB GPU, with batch size 64 and 2 gradient accumulation steps. They can be reproduced with `bash final_study/run_final.sh`.
 
-At H=1, the proposed model still reduces burst MSE by 16-31%, but this is well below the 94% found with the original flow. Unfortunately, the gain fades away at H=24 and H=48, and Fig. 4 of the paper could not be reproduced with leak-free training. At H=12 there still seems to be some gain, and we will post an update on it.
+At H=1, the proposed model still reduces burst MSE by 16-31%, but this is below the 94% found with the original flow. Unfortunately, the gain fades away at H=24 and H=48, and Fig. 4 of the paper could not be reproduced with leak-free training. At H=12 there still seems to be some gain, and we will post an update on it.
+
+The rest of this README is kept as it was: the figures and tables below come from the original flow and are still provided for comparison.
 
 ## Required packages
 Python 3.7.17 is used alongside the libraries provided in requirements.txt
@@ -40,7 +42,7 @@ The three additional self-similar datasets are under data/fresh as self_similar_
 get_bursts.py is used to find the burst locations
 
 
-## Results
+## Old results (original flow, with the data leak)
 
 ![Forecasting accuracies](img/result1.png)
 ![Burst forecasts within a prediction horizon](img/result2.png)
