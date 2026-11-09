@@ -1,7 +1,8 @@
 """1-step-ahead MSE table for the paper: vanilla Informer vs the proposed model, overall and on burst points.
-Reads final_study/results/runs_fin_h1_seeds.csv (written by evaluate_final.py) and writes mse_table_h1.{md,tex,png}
+Reads final_study/results/runs_fin.csv (written by evaluate_final.py, or pass --csv) and writes mse_table_h1.{md,tex,png}
 next to it. Cells are mean +- std over seeds; the change is between the means. Run from the repo root.
 """
+import argparse
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -10,7 +11,9 @@ import matplotlib.pyplot as plt
 OUT = "final_study/results/mse_table_h1"
 NAMES = {"paper": "Paper self-similar", "ss2": "Self-similar 2", "ss3": "Self-similar 3", "ss4": "Self-similar 4"}
 
-d = pd.read_csv("final_study/results/runs_fin_h1_seeds.csv")
+ap = argparse.ArgumentParser()
+ap.add_argument("--csv", default="final_study/results/runs_fin.csv")
+d = pd.read_csv(ap.parse_args().csv)
 d = d[d.H == 1]
 rows, tex = [], []
 for key, name in NAMES.items():
